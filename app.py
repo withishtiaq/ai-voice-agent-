@@ -8,7 +8,7 @@ app = Flask(__name__)
 api_key = os.environ.get("GOOGLE_API_KEY")
 
 if not api_key:
-    print("Error: GOOGLE_API_KEY not found!")
+    print("Error: GOOGLE_API_KEY not found in environment variables!")
 else:
     genai.configure(api_key=api_key)
 
@@ -30,9 +30,10 @@ system_instruction = """
 ৪. উত্তরগুলো খুব বেশি বড় করবেন না, কথোপকথন বা চ্যাটের মতো ছোট রাখুন।
 """
 
-# --- মডেল সিলেকশন (সবচেয়ে নিরাপদ অপশন) ---
-# 'gemini-1.5-flash' হলো ফ্রি টিয়ারের জন্য সবচেয়ে স্টেবল মডেল
-model_name = "gemini-1.5-flash"
+# --- মডেল সিলেকশন ---
+# আপনার লিস্টে "gemini-flash-latest" নামটি ছিল, তাই আমরা হুবহু ওটাই ব্যবহার করছি।
+# মাঝখানে '1.5' দেবেন না।
+model_name = "gemini-flash-latest"
 
 try:
     model = genai.GenerativeModel(
@@ -44,34 +45,21 @@ try:
     print(f"Success: Model loaded using {model_name}")
 except Exception as e:
     print(f"Error loading model {model_name}: {e}")
-    # যদি 1.5 Flash কাজ না করে, তবে 'gemini-pro' তে ফলব্যাক করবে
-    fallback_model = "gemini-pro"
-    print(f"Trying fallback model: {fallback_model}")
-    try:
-        model = genai.GenerativeModel(
-            model_name=fallback_model,
-            generation_config=generation_config,
-            system_instruction=system_instruction
-        )
-        chat_session = model.start_chat(history=[])
-        model_name = fallback_model # নাম আপডেট করা হলো
-    except Exception as e2:
-         model = None
-         print(f"Critical Error: No models worked. {e2}")
+    # যদি এটাও কাজ না করে, তবে একেবারে বেসিক মডেলে চলে যাবে
+    model_name = "gemini-pro"
+    model = genai.GenerativeModel(model_name=model_name)
+    chat_session = model.start_chat(history=[])
 
 # --- API রাউট ---
 
 @app.route('/', methods=['GET'])
 def home():
-    return f"Math AI Agent is active using: {model_name}"
+    return f"Math AI Agent running with: {model_name}"
 
 @app.route('/chat', methods=['POST'])
 def chat_with_math_agent():
     global chat_session
     try:
-        if not model:
-            return jsonify({"error": "Model failed to initialize."}), 500
-
         data = request.json
         user_message = data.get('message')
 
@@ -89,17 +77,18 @@ def chat_with_math_agent():
         })
 
     except Exception as e:
-        # যদি কোনো কারণে সেশন বা টোকেন এরর দেয়, নতুন করে চেষ্টা করবে
+        # 429 Quota Error বা অন্য এরর হ্যান্ডলিং
+        error_msg = str(e)
+        if "429" in error_msg:
+             return jsonify({"error": "Daily Quota Exceeded. Please try again later."}), 429
+        
+        # সেশন রিসেট করে আবার চেষ্টা
         try:
              chat_session = model.start_chat(history=[])
              response = model.generate_content(user_message)
              clean_text = response.text.replace("*", "").replace("#", "")
              return jsonify({"reply": clean_text})
         except Exception as inner_e:
-             # বিশেষ করে 429 এরর হ্যান্ডলিং
-             error_msg = str(e)
-             if "429" in error_msg:
-                 return jsonify({"error": "Too many requests. Please wait a moment."}), 429
              return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
