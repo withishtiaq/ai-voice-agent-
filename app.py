@@ -5,7 +5,6 @@ import google.generativeai as genai
 app = Flask(__name__)
 
 # --- API Key সেটআপ ---
-# Render এর Environment Variable থেকে Key লোড হবে
 api_key = os.environ.get("GOOGLE_API_KEY")
 
 if not api_key:
@@ -31,8 +30,9 @@ system_instruction = """
 ৪. উত্তরগুলো খুব বেশি বড় করবেন না, কথোপকথন বা চ্যাটের মতো ছোট রাখুন।
 """
 
-# --- মডেল সিলেকশন (আপনার অনুরোধ অনুযায়ী) ---
-model_name = "gemini-1.5-flash-latest"
+# --- মডেল সিলেকশন (আপনার লিস্ট থেকে সেরাটি নেওয়া হয়েছে) ---
+# আপনার দেওয়া লিস্ট অনুযায়ী 'gemini-2.0-flash' সবথেকে ভালো অপশন
+model_name = "gemini-2.0-flash"
 
 try:
     model = genai.GenerativeModel(
@@ -50,24 +50,7 @@ except Exception as e:
 
 @app.route('/', methods=['GET'])
 def home():
-    # হোম পেজে দেখাবে কোন মডেল ব্যবহার করা হচ্ছে
-    return f"Math AI Agent running with: {model_name}. Use /chat to talk."
-
-# ডিবাগিং রাউট: এটি চেক করবে আপনার API Key তে কোন কোন মডেল পারমিশন আছে
-@app.route('/models', methods=['GET'])
-def list_models():
-    try:
-        available_models = []
-        if api_key:
-            for m in genai.list_models():
-                if 'generateContent' in m.supported_generation_methods:
-                    available_models.append(m.name)
-        return jsonify({
-            "current_target_model": model_name,
-            "available_models_for_your_key": available_models
-        })
-    except Exception as e:
-        return jsonify({"error": str(e)})
+    return f"Math AI Agent is running perfectly with: {model_name}"
 
 @app.route('/chat', methods=['POST'])
 def chat_with_math_agent():
@@ -76,7 +59,7 @@ def chat_with_math_agent():
         # মডেল লোড না হলে এরর দেবে
         if not model:
             return jsonify({
-                "error": f"Model {model_name} failed to initialize. Check /models endpoint."
+                "error": f"Model {model_name} failed to initialize."
             }), 500
 
         data = request.json
@@ -88,7 +71,7 @@ def chat_with_math_agent():
         # মেসেজ পাঠানো
         response = chat_session.send_message(user_message)
         
-        # ক্লিন টেক্সট
+        # ক্লিন টেক্সট (ভয়েস বা TTS এর পড়ার সুবিধার জন্য)
         clean_text = response.text.replace("*", "").replace("#", "")
 
         return jsonify({
